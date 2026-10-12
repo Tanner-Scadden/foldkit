@@ -1,5 +1,13 @@
 # foldkit
 
+## 0.168.1
+
+### Patch Changes
+
+- Rebuild with the release's shared tooling configuration so the published packages and website use the same build inputs.
+
+- [#1659](https://github.com/foldkit/foldkit/pull/1659) [`1ce3d4b`](https://github.com/foldkit/foldkit/commit/1ce3d4b050553d7564ed055488877f0039bbad31) Thanks [@devinjameson](https://github.com/devinjameson)! - Reduce server rendering CPU work by sharing parsed HTML trees across checks that use the same insertion context and scripting mode. Template injection captures the rendered HTML once so validation and insertion use the same markup. All markup safety and hydration checks run in both development and production.
+
 ## 0.168.0
 
 ### Patch Changes
