@@ -260,19 +260,13 @@ describe('update', () => {
             }),
           }),
         ),
-        Command.resolve(
-          DragAndDrop.FocusItem({ itemId: firstCardId }),
-          DragAndDrop.Message.CompletedFocusItem(),
-        ),
+        DragAndDrop.test.settleFocus({ itemId: firstCardId }),
         message(
           Message.GotDragAndDropMessage({
             message: DragAndDrop.Message.ConfirmedKeyboardDrop(),
           }),
         ),
-        Command.resolve(
-          DragAndDrop.FocusItem,
-          DragAndDrop.Message.CompletedFocusItem(),
-        ),
+        DragAndDrop.test.settleFocus({ itemId: firstCardId }),
         Command.resolve(SaveBoard, Message.CompletedSaveBoard()),
         model(model => {
           const todoColumn = model.columns.find(column => column.id === 'todo')
@@ -304,19 +298,13 @@ describe('update', () => {
             }),
           }),
         ),
-        Command.resolve(
-          DragAndDrop.FocusItem({ itemId: cardId }),
-          DragAndDrop.Message.CompletedFocusItem(),
-        ),
+        DragAndDrop.test.settleFocus({ itemId: cardId }),
         message(
           Message.GotDragAndDropMessage({
             message: DragAndDrop.Message.ConfirmedKeyboardDrop(),
           }),
         ),
-        Command.resolve(
-          DragAndDrop.FocusItem,
-          DragAndDrop.Message.CompletedFocusItem(),
-        ),
+        DragAndDrop.test.settleFocus({ itemId: cardId }),
         Command.resolve(SaveBoard, Message.CompletedSaveBoard()),
         model(model => {
           const todoCards = model.columns
@@ -349,10 +337,9 @@ describe('update', () => {
             message: DragAndDrop.Message.CancelledDrag(),
           }),
         ),
-        Command.resolve(
-          DragAndDrop.FocusItem,
-          DragAndDrop.Message.CompletedFocusItem(),
-        ),
+        DragAndDrop.test.settleFocus({
+          itemId: emptyModel.columns[0]!.cards[0]!.id,
+        }),
         model(model => {
           expect(model.columns).toStrictEqual(emptyModel.columns)
         }),

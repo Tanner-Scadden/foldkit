@@ -17,6 +17,7 @@ import {
   subscriptions,
   update,
 } from './index.js'
+import * as DragAndDropTest from './test.js'
 
 const defaultInit = () => init({ id: 'test' })
 
@@ -671,6 +672,55 @@ describe('DragAndDrop', () => {
         Story.message(activatedKeyboardDrag),
         Story.model(model => {
           expect(ghostStyle(model)).toStrictEqual(Option.none())
+        }),
+      )
+    })
+  })
+
+  describe('test helpers', () => {
+    const activatedKeyboardDrag = Message.ActivatedKeyboardDrag({
+      itemId: 'item-1',
+      containerId: 'list-1',
+      index: 0,
+    })
+
+    it('settleFocus completes a keyboard drop', () => {
+      Story.story(
+        update,
+        Story.given(defaultInit()),
+        Story.message(activatedKeyboardDrag),
+        Story.message(Message.ConfirmedKeyboardDrop()),
+        Story.expectOutMessage(
+          OutMessage.Reordered({
+            itemId: 'item-1',
+            fromContainerId: 'list-1',
+            fromIndex: 0,
+            toContainerId: 'list-1',
+            toIndex: 0,
+          }),
+        ),
+        DragAndDropTest.settleFocus({ itemId: 'item-1' }),
+        Story.model(model => {
+          expect(isDragging(model)).toBe(false)
+        }),
+      )
+    })
+
+    it('resolveKeyboardMove moves the drop target and settles focus', () => {
+      Story.story(
+        update,
+        Story.given(defaultInit()),
+        Story.message(activatedKeyboardDrag),
+        Story.message(Message.PressedArrowKey({ direction: 'NextContainer' })),
+        DragAndDropTest.resolveKeyboardMove({
+          itemId: 'item-1',
+          targetContainerId: 'list-2',
+          targetIndex: 3,
+        }),
+        Story.model(model => {
+          expect(maybeDropTarget(model)).toEqual(
+            Option.some({ containerId: 'list-2', index: 3 }),
+          )
         }),
       )
     })
