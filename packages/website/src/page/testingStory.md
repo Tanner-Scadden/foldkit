@@ -61,6 +61,14 @@ Use `resolveAllExact` when the resolver list is also a claim about which Command
 `message` throws if there are pending Commands from a previous step. Resolve all Commands before sending the next Message. `story` throws at the end if any Commands remain unresolved. Every Command your update function produces must be accounted for.
 :::
 
+## Commands From UI Components
+
+Some `@foldkit/ui` components schedule Commands of their own. Showing a toast waits for paint, waits for the enter animation to settle, and starts an auto-dismiss timer. Each of those Commands reaches your story and must be resolved like any other.
+
+A component that ships a test helper exposes it on its `test` namespace. Check for one before resolving a component's Commands by hand. `Toast.test.drainEntry({ entryId })` resolves a toast entry's whole lifecycle in one step.
+
+When you do resolve a child Command by hand, pass the child's raw result Message. `Command.resolve` and `Command.resolveAll` replay the Command's own wrapping, so the parent's `Got*` Message is not needed.
+
 ## Reusable Step Groups
 
 Use `steps` when several stories share the same setup or Message sequence. The group preserves the Model, Message, and OutMessage constraints of every step inside it, so the update passed to `story` still rejects a group built for a different program.

@@ -63,6 +63,10 @@ While an entry is translated, the view exposes its drag or release offset as `--
 
 The container has `role="region"` and `aria-live="polite"`. It stays in the DOM when empty so screen readers can observe notifications added later. Each entry has `aria-atomic="true"` and receives `role="status"` for Info and Success or `role="alert"` for Warning and Error. Auto-dismiss pauses on pointer hover and while dragging. Swipe and close-button dismissal both use the leave animation and emit `DismissedToast` when the entry is removed.
 
+## Testing
+
+Showing a toast schedules its enter animation and, unless the entry is sticky, an auto-dismiss timer. A Story test must resolve each of those Commands. For an entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves them in order, from the enter animation through auto-dismiss and the exit animation, and ends with the entry removed and `DismissedToast` emitted. Read the entry id from the Model, for example `model.entries[0].id`.
+
 ## API Reference
 
 ### InitConfig {#init-config}
