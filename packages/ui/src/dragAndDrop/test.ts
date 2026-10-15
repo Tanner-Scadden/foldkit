@@ -2,21 +2,14 @@ import * as Story from 'foldkit/story'
 
 import { FocusItem, Message, ResolveKeyboardMove } from './index.js'
 
-/** Input for {@link settleFocus}. `itemId` is the dragged item that the
- *  drop, cancel, or move focuses. */
+/** Identifies the item whose focus Command {@link settleFocus} resolves. */
 export type SettleFocusInput = Readonly<{
   itemId: string
 }>
 
-/** Builds a `Story.Command.resolve` step that resolves the `FocusItem`
- *  Command a keyboard drop, a cancelled keyboard drag, or a resolved keyboard
- *  move returns. Throws if that item has no pending focus Command. Other
- *  Commands returned by the parent stay pending for the story to resolve.
- *
- *  The step resolves with the child's raw result Message. `resolve` replays
- *  the matched Command's own recorded wrapping, so a parent that embeds the
- *  drag-and-drop Submodel settles the same way without restating its `Got*`
- *  lift.
+/** Returns a Story step that resolves `FocusItem({ itemId })` after a keyboard
+ *  drop, cancellation, or move. The step fails if no matching Command is pending
+ *  and leaves unrelated Commands pending.
  *
  *  @example
  *  ```ts
@@ -35,20 +28,18 @@ export type SettleFocusInput = Readonly<{
 export const settleFocus = ({ itemId }: SettleFocusInput) =>
   Story.Command.resolve(FocusItem({ itemId }), Message.CompletedFocusItem())
 
-/** Input for {@link resolveKeyboardMove}. `itemId` is the dragged item, and
- *  `targetContainerId` and `targetIndex` are where the arrow key moves it. */
+/** The dragged item and target position supplied to {@link resolveKeyboardMove}. */
 export type ResolveKeyboardMoveInput = Readonly<{
   itemId: string
   targetContainerId: string
   targetIndex: number
 }>
 
-/** Builds a group of Story steps that resolves one arrow-key move
- *  during a keyboard drag. It answers `ResolveKeyboardMove` with the given
- *  target, which the Runtime would otherwise compute from the rendered
- *  droppables, then resolves the item's `FocusItem`. Throws if either Command
- *  is missing or more than one keyboard move is pending. Other Commands
- *  returned by the parent stay pending for the story to resolve.
+/** Returns Story steps that resolve a pending `ResolveKeyboardMove` to the
+ *  supplied container and index, then resolve `FocusItem` for `itemId`.
+ *
+ *  The steps fail if either Command is missing or multiple keyboard moves are
+ *  pending. Unrelated Commands stay pending.
  *
  *  @example
  *  ```ts

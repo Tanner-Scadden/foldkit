@@ -679,7 +679,7 @@ describe('DragAndDrop', () => {
   })
 
   describe('test helpers', () => {
-    it('settleFocus completes a keyboard drop', () => {
+    it('settleFocus resolves focus after a keyboard drop', () => {
       Story.story(
         update,
         Story.given(defaultInit()),
@@ -701,7 +701,7 @@ describe('DragAndDrop', () => {
       )
     })
 
-    it('resolveKeyboardMove moves the drop target and settles focus', () => {
+    it('resolveKeyboardMove supplies the target and resolves focus', () => {
       Story.story(
         update,
         Story.given(defaultInit()),

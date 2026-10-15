@@ -53,9 +53,10 @@ Draggable items receive `role="option"` with `aria-roledescription="draggable"`.
 
 ## Testing
 
-Keyboard drags return Commands that a Story test must resolve. A keyboard drop, cancel, or resolved arrow-key move returns `FocusItem` for the dragged item. An arrow key first returns `ResolveKeyboardMove`, whose Effect reads the rendered droppables to find the next drop target.
+In [Story tests](/testing/story), use `DragAndDrop.test` to resolve keyboard drag Commands:
 
-`DragAndDrop.test.settleFocus({ itemId })` resolves the focus after a drop or cancel. `DragAndDrop.test.resolveKeyboardMove({ itemId, targetContainerId, targetIndex })` answers an arrow-key move with the given target and then resolves its focus. The helpers require the expected Commands and leave unrelated parent Commands for the story to resolve. Both replay a parent's `Got*` wrapping, so a parent story uses them unchanged.
+- `DragAndDrop.test.settleFocus({ itemId })` resolves the item's focus after a drop or cancellation.
+- `DragAndDrop.test.resolveKeyboardMove({ itemId, targetContainerId, targetIndex })` supplies a target container and index for an arrow-key move, then resolves the item's focus.
 
 ## API Reference
 
