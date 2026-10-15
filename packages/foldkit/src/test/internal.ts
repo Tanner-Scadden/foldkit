@@ -582,16 +582,13 @@ export const assertZeroCommands = (
   }
 }
 
-/** Points at component test helpers when any leftover Command was lifted from
- *  a child Submodel. Those are often a `@foldkit/ui` component's internal
- *  Commands, which a helper on the component's `test` namespace resolves. */
 const formatChildCommandHint = (commands: ReadonlyArray<AnyCommand>): string =>
   Array.some(commands, command =>
     Array.isReadonlyArrayNonEmpty(command.messageMappers ?? []),
   )
-    ? '\n\nSome of these come from a child Submodel. If the child is a\n' +
+    ? '\n\nSome Commands came from a child Submodel. If the child is an\n' +
       '@foldkit/ui component, check its test namespace for a helper\n' +
-      '(such as Toast.test.drainEntry) before resolving them by hand.'
+      '(for example, Toast.test.drainEntry).'
     : ''
 
 /** Throws when trying to send a message with unresolved Commands. Keyed
