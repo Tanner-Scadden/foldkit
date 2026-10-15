@@ -8,7 +8,7 @@ import {
   inertHtml as ih,
 } from '../html/index.js'
 import { observeLazyResolutions } from '../html/lazy.js'
-import { Lazy } from './public.js'
+import * as Lazy from './lazy.js'
 
 type Row = Readonly<{ id: string; label: string }>
 type Model = Readonly<{ title: string; rows: ReadonlyArray<Row> }>
@@ -71,7 +71,7 @@ describe('Lazy.expectAllReused', () => {
         '',
         '  slot 1: NoCachedEntry',
         '',
-        '  NoCachedEntry: the slot had nothing cached for this key from the first render. Create createLazy and createKeyedLazy slots at module scope, not inside the view, and key keyed slots by a stable id from the Model.',
+        '  NoCachedEntry: Create the slot at module scope and key keyed slots by a stable Model id.',
       ].join('\n'),
     )
   })
@@ -111,7 +111,7 @@ describe('Lazy.expectAllReused', () => {
         '  slot 2, key "row-1": ArgumentsChanged at index 0, 1',
         '  slot 2, key "row-2": ArgumentsChanged at index 0, 1',
         '',
-        '  ArgumentsChanged: the arguments at those indices are new references for the same Model.',
+        '  ArgumentsChanged: Pass Model values, not objects, arrays, or closures created during the view.',
       ].join('\n'),
     )
   })
@@ -126,23 +126,6 @@ describe('Lazy.expectAllReused', () => {
 
     expect(failureMessage(view)).toContain(
       '  slot 1, key "row-1": ArgumentsChanged at index 1',
-    )
-  })
-
-  test('reports a changed args length as ArgumentCountChanged', () => {
-    const lazyTitle = createLazy()
-    const joinedTitleView = (...titles: ReadonlyArray<string>): Html =>
-      titleView(titles.join(' '))
-    let renderCount = 0
-    const view: View = (model, h) => {
-      renderCount++
-      const titles =
-        renderCount === 1 ? [model.title] : [model.title, model.title]
-      return h.div([], [lazyTitle(joinedTitleView, titles)])
-    }
-
-    expect(failureMessage(view)).toContain(
-      '  slot 1: ArgumentCountChanged from 1 to 2',
     )
   })
 

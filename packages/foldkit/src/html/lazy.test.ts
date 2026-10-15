@@ -541,6 +541,21 @@ describe('observeLazyResolutions', () => {
     ])
   })
 
+  it('reports a changed args length as ArgumentCountChanged', () => {
+    const viewFn = (...labels: ReadonlyArray<string>) =>
+      h('div', {}, [labels.join(' ')])
+    const lazy = createLazy()
+    lazy(viewFn, ['a'])
+
+    const resolutions = observe(() => {
+      lazy(viewFn, ['a', 'b'])
+    })
+
+    expect(resolutions.map(({ missReason }) => missReason)).toEqual([
+      { _tag: 'ArgumentCountChanged', previousCount: 1, currentCount: 2 },
+    ])
+  })
+
   it('reports the key and one slot identity for a keyed slot', () => {
     const viewFn = (label: string) => h('div', {}, [label])
     const lazyRows = createKeyedLazy()

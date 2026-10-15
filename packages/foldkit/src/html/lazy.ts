@@ -1,4 +1,4 @@
-import { Predicate } from 'effect'
+import { Array, Predicate, Result } from 'effect'
 
 import { type VNode, dedupeMemoizedResult, memoizedVNodes } from '../vdom.js'
 import {
@@ -30,16 +30,16 @@ export type LazyMissReason =
     }>
   | Readonly<{ _tag: 'ArgumentsChanged'; indices: ReadonlyArray<number> }>
 
-/** One lazy slot resolution reported to a {@link observeLazyResolutions}
+/** One lazy slot lookup reported to a {@link observeLazyResolutions}
  *  observer. `slot` identifies the `createLazy` or `createKeyedLazy` instance,
- *  `key` is present for keyed slots, and `missReason` is absent on a reuse. */
+ *  `key` is set for keyed slots, and `missReason` is unset on a reuse. */
 export type LazyResolution = Readonly<{
   slot: object
-  key?: PropertyKey
-  missReason?: LazyMissReason
+  key: PropertyKey | undefined
+  missReason: LazyMissReason | undefined
 }>
 
-let maybeResolutionObserver: ((resolution: LazyResolution) => void) | undefined
+let resolutionObserver: ((resolution: LazyResolution) => void) | undefined
 
 /** @internal Reports every lazy slot resolution made while `run` executes.
  *  `Lazy.expectAllReused` in `foldkit/test` uses this to explain misses. */
@@ -47,12 +47,13 @@ export const observeLazyResolutions = <A>(
   observer: (resolution: LazyResolution) => void,
   run: () => A,
 ): A => {
-  const previousObserver = maybeResolutionObserver
-  maybeResolutionObserver = observer
+  const previousObserver = resolutionObserver
+  resolutionObserver = observer
+
   try {
     return run()
   } finally {
-    maybeResolutionObserver = previousObserver
+    resolutionObserver = previousObserver
   }
 }
 
@@ -95,9 +96,11 @@ const findMissReason = (
   if (previousEntry === undefined) {
     return { _tag: 'NoCachedEntry' }
   }
+
   if (previousEntry.fn !== fn) {
     return { _tag: 'FunctionChanged' }
   }
+
   if (
     previousEntry.dispatch !== dispatch ||
     previousEntry.mountDispatch !== mountDispatch ||
@@ -105,6 +108,7 @@ const findMissReason = (
   ) {
     return { _tag: 'FrameChanged' }
   }
+
   if (previousEntry.args.length !== args.length) {
     return {
       _tag: 'ArgumentCountChanged',
@@ -112,12 +116,13 @@ const findMissReason = (
       currentCount: args.length,
     }
   }
-  const indices: Array<number> = []
-  for (let index = 0; index < args.length; index++) {
-    if (previousEntry.args[index] !== args[index]) {
-      indices.push(index)
-    }
-  }
+
+  const indices = Array.filterMap(
+    Array.zip(previousEntry.args, args),
+    ([previousArg, arg], index) =>
+      previousArg === arg ? Result.failVoid : Result.succeed(index),
+  )
+
   return { _tag: 'ArgumentsChanged', indices }
 }
 
@@ -148,26 +153,26 @@ const resolveOrCache = <Args extends ReadonlyArray<unknown>>(
     previousEntry.mountDispatch === mountDispatch &&
     previousEntry.mountRenderOwner === mountRenderOwner &&
     argsEqual(previousEntry.args, args)
-  // NOTE: the reason is only derived while a test observer is installed, so
-  // a live render keeps the same comparison and allocation profile.
-  if (maybeResolutionObserver !== undefined) {
-    maybeResolutionObserver({
+
+  // NOTE: miss reasons are derived only while a test observes this render,
+  // so production renders do not allocate them.
+  if (resolutionObserver !== undefined) {
+    resolutionObserver({
       slot,
-      ...(key === undefined ? {} : { key }),
-      ...(isHit
-        ? {}
-        : {
-            missReason: findMissReason(
-              previousEntry,
-              fn,
-              args,
-              dispatch,
-              mountDispatch,
-              mountRenderOwner,
-            ),
-          }),
+      key,
+      missReason: isHit
+        ? undefined
+        : findMissReason(
+            previousEntry,
+            fn,
+            args,
+            dispatch,
+            mountDispatch,
+            mountRenderOwner,
+          ),
     })
   }
+
   if (isHit) {
     restoreBoundaryWrapsForLazyHit(registry, previousEntry.trackedBoundaries)
     return previousEntry.vnode
