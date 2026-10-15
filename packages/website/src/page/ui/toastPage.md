@@ -65,7 +65,9 @@ The container has `role="region"` and `aria-live="polite"`. It stays in the DOM 
 
 ## Testing
 
-Showing a toast schedules its enter animation and, unless the entry is sticky, an auto-dismiss timer. A Story test must resolve each of those Commands. For an entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves them in order, from the enter animation through auto-dismiss and the exit animation, and ends with the entry removed and `DismissedToast` emitted. Read the entry id from the Model, for example `model.entries[0].id`.
+Showing a toast returns Commands for its enter animation and, unless the entry is sticky, an auto-dismiss timer. A Story test must resolve each of those Commands. For a freshly shown entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves them in order, from the enter animation through auto-dismiss and the exit animation. The entry is removed and `DismissedToast` is emitted.
+
+Read the entry from the Toast Model with `Array.head` or `Array.findFirst`, handle the returned `Option`, and pass the entry's id to the helper.
 
 ## API Reference
 

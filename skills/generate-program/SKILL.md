@@ -694,7 +694,7 @@ Write `story` pipelines covering:
 - **Multi-step interaction**: at least one test that chains multiple Messages and Command resolutions
 - **Edge cases**: empty states, boundary conditions, ignored inputs (e.g. stale results, duplicate submissions)
 
-When a story touches a `@foldkit/ui` component that schedules its own Commands (animations, timers, focus), check the component's `test` namespace before resolving them by hand. `Toast.test.drainEntry({ entryId })` resolves a toast's whole lifecycle in one step. Resolve any child Command with the child's raw result Message; `Command.resolve` replays the parent's wrapping.
+When a story touches a `@foldkit/ui` component that returns its own Commands (animations, timers, focus), check the component's `test` namespace before resolving them by hand. For a freshly shown entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves its enter animation, auto-dismiss timer, and exit animation. Resolve any child Command with the child's raw result Message; `Command.resolve` replays the Command's recorded wrapping.
 
 **Scene tests** (`scene.test.ts`) test through the rendered view. You interact with elements by accessible locators (role, label, text) and assert on what the user sees. A `scene.test.ts` is **REQUIRED** for Tier 3+ apps. The review loop treats its absence as a BLOCKER, not a QUALITY item. No exceptions. Don't "defer" this. Study these exemplars:
 

@@ -63,9 +63,9 @@ Use `resolveAllExact` when the resolver list is also a claim about which Command
 
 ## Commands From UI Components
 
-Some `@foldkit/ui` components schedule Commands of their own. Showing a toast waits for paint, waits for the enter animation to settle, and starts an auto-dismiss timer. Each of those Commands reaches your story and must be resolved like any other.
+Some `@foldkit/ui` components return Commands of their own. Showing a toast returns Commands that wait for paint and its enter animation to settle. A non-sticky entry also returns an auto-dismiss timer Command. Each of those Commands reaches your story and must be resolved like any other.
 
-A component that ships a test helper exposes it on its `test` namespace. Check for one before resolving a component's Commands by hand. `Toast.test.drainEntry({ entryId })` resolves a toast entry's whole lifecycle in one step.
+A component that ships a test helper exposes it on its `test` namespace. Check for one before resolving a component's Commands by hand. For a freshly shown entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves its enter animation, auto-dismiss timer, and exit animation. The entry is removed and `DismissedToast` is emitted.
 
 When you do resolve a child Command by hand, pass the child's raw result Message. `Command.resolve` and `Command.resolveAll` replay the Command's own wrapping, so the parent's `Got*` Message is not needed.
 
