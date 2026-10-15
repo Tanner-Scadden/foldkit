@@ -61,13 +61,13 @@ Use `resolveAllExact` when the resolver list is also a claim about which Command
 `message` throws if there are pending Commands from a previous step. Resolve all Commands before sending the next Message. `story` throws at the end if any Commands remain unresolved. Every Command your update function produces must be accounted for.
 :::
 
-## Commands From UI Components
+### Resolve Child Commands
 
-Some `@foldkit/ui` components return Commands of their own. Showing a toast returns Commands that wait for paint and its enter animation to settle. A non-sticky entry also returns an auto-dismiss timer Command. Each of those Commands reaches your story and must be resolved like any other.
+When resolving a Command from a [child Submodel](/core/submodel), pass the child's result Message. Story applies the parent Message mapping automatically.
 
-A component that ships a test helper exposes it on its `test` namespace. Check for one before resolving a component's Commands by hand. For a freshly shown entry that auto-dismisses, `Toast.test.drainEntry({ entryId })` resolves its enter animation, auto-dismiss timer, and exit animation. The entry is removed and `DismissedToast` is emitted.
+### UI Component Test Helpers
 
-When you do resolve a child Command by hand, pass the child's raw result Message. `Command.resolve` and `Command.resolveAll` replay the Command's own wrapping, so the parent's `Got*` Message is not needed.
+Before writing resolvers for an `@foldkit/ui` component, check its `test` namespace for helpers. For example, [`Toast.test.drainEntry`](/ui/toast#testing) handles the animation and timer Commands for a newly shown toast that auto-dismisses.
 
 ## Reusable Step Groups
 
