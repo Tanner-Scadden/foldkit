@@ -11,11 +11,50 @@ import {
 } from './boundary.js'
 import {
   type DispatchSync,
+  type MountRenderOwner,
   requireBoundary,
   requireDispatch,
   requireMountDispatch,
   requireMountRenderOwner,
 } from './runtimeSingleton.js'
+
+/** Why a lazy slot rebuilt its view instead of reusing the cached VNode. */
+export type LazyMissReason =
+  | Readonly<{ _tag: 'NoCachedEntry' }>
+  | Readonly<{ _tag: 'FunctionChanged' }>
+  | Readonly<{ _tag: 'FrameChanged' }>
+  | Readonly<{
+      _tag: 'ArgumentCountChanged'
+      previousCount: number
+      currentCount: number
+    }>
+  | Readonly<{ _tag: 'ArgumentsChanged'; indices: ReadonlyArray<number> }>
+
+/** One lazy slot resolution reported to a {@link observeLazyResolutions}
+ *  observer. `slot` identifies the `createLazy` or `createKeyedLazy` instance,
+ *  `key` is present for keyed slots, and `missReason` is absent on a reuse. */
+export type LazyResolution = Readonly<{
+  slot: object
+  key?: PropertyKey
+  missReason?: LazyMissReason
+}>
+
+let maybeResolutionObserver: ((resolution: LazyResolution) => void) | undefined
+
+/** @internal Reports every lazy slot resolution made while `run` executes.
+ *  `Lazy.expectAllReused` in `foldkit/test` uses this to explain misses. */
+export const observeLazyResolutions = <A>(
+  observer: (resolution: LazyResolution) => void,
+  run: () => A,
+): A => {
+  const previousObserver = maybeResolutionObserver
+  maybeResolutionObserver = observer
+  try {
+    return run()
+  } finally {
+    maybeResolutionObserver = previousObserver
+  }
+}
 
 const argsEqual = (
   previous: ReadonlyArray<unknown>,
@@ -37,7 +76,7 @@ type CacheEntry = Readonly<{
   args: ReadonlyArray<unknown>
   dispatch: DispatchSync
   mountDispatch: DispatchSync
-  mountRenderOwner: ReturnType<typeof requireMountRenderOwner>
+  mountRenderOwner: MountRenderOwner
   vnode: VNode | null
   // NOTE: boundary registrations captured during the wrapped function's run.
   // A cache hit restores evicted wraps and replays their ids into the
@@ -45,7 +84,46 @@ type CacheEntry = Readonly<{
   trackedBoundaries: ReadonlyMap<BoundaryId, TrackedBoundaryWrap>
 }>
 
+const findMissReason = (
+  previousEntry: CacheEntry | undefined,
+  fn: Function,
+  args: ReadonlyArray<unknown>,
+  dispatch: DispatchSync,
+  mountDispatch: DispatchSync,
+  mountRenderOwner: MountRenderOwner,
+): LazyMissReason => {
+  if (previousEntry === undefined) {
+    return { _tag: 'NoCachedEntry' }
+  }
+  if (previousEntry.fn !== fn) {
+    return { _tag: 'FunctionChanged' }
+  }
+  if (
+    previousEntry.dispatch !== dispatch ||
+    previousEntry.mountDispatch !== mountDispatch ||
+    previousEntry.mountRenderOwner !== mountRenderOwner
+  ) {
+    return { _tag: 'FrameChanged' }
+  }
+  if (previousEntry.args.length !== args.length) {
+    return {
+      _tag: 'ArgumentCountChanged',
+      previousCount: previousEntry.args.length,
+      currentCount: args.length,
+    }
+  }
+  const indices: Array<number> = []
+  for (let index = 0; index < args.length; index++) {
+    if (previousEntry.args[index] !== args[index]) {
+      indices.push(index)
+    }
+  }
+  return { _tag: 'ArgumentsChanged', indices }
+}
+
 const resolveOrCache = <Args extends ReadonlyArray<unknown>>(
+  slot: object,
+  key: PropertyKey | undefined,
   previousEntry: CacheEntry | undefined,
   fn: (...args: Args) => VNode | null,
   args: Args,
@@ -63,14 +141,34 @@ const resolveOrCache = <Args extends ReadonlyArray<unknown>>(
   // future renderer that separates them from retaining stale handler or Mount
   // lifecycle closures. Custom renderers can also use one dispatcher for both
   // owners, so the owner remains a separate key member.
-  if (
+  const isHit =
     Predicate.isNotUndefined(previousEntry) &&
     previousEntry.fn === fn &&
     previousEntry.dispatch === dispatch &&
     previousEntry.mountDispatch === mountDispatch &&
     previousEntry.mountRenderOwner === mountRenderOwner &&
     argsEqual(previousEntry.args, args)
-  ) {
+  // NOTE: the reason is only derived while a test observer is installed, so
+  // a live render keeps the same comparison and allocation profile.
+  if (maybeResolutionObserver !== undefined) {
+    maybeResolutionObserver({
+      slot,
+      ...(key === undefined ? {} : { key }),
+      ...(isHit
+        ? {}
+        : {
+            missReason: findMissReason(
+              previousEntry,
+              fn,
+              args,
+              dispatch,
+              mountDispatch,
+              mountRenderOwner,
+            ),
+          }),
+    })
+  }
+  if (isHit) {
     restoreBoundaryWrapsForLazyHit(registry, previousEntry.trackedBoundaries)
     return previousEntry.vnode
   }
@@ -128,12 +226,13 @@ export const createLazy = (): (<Args extends ReadonlyArray<unknown>>(
   args: Args,
 ) => VNode | null) => {
   let cached: CacheEntry | undefined
+  const slot = {}
 
   return <Args extends ReadonlyArray<unknown>>(
     fn: (...args: Args) => VNode | null,
     args: Args,
   ): VNode | null =>
-    resolveOrCache(cached, fn, args, entry => {
+    resolveOrCache(slot, undefined, cached, fn, args, entry => {
       cached = entry
     })
 }
@@ -167,13 +266,14 @@ export const createKeyedLazy = (): (<Args extends ReadonlyArray<unknown>>(
   args: Args,
 ) => VNode | null) => {
   const cache = new Map<PropertyKey, CacheEntry>()
+  const slot = {}
 
   return <Args extends ReadonlyArray<unknown>>(
     key: PropertyKey,
     fn: (...args: Args) => VNode | null,
     args: Args,
   ): VNode | null =>
-    resolveOrCache(cache.get(key), fn, args, entry => {
+    resolveOrCache(slot, key, cache.get(key), fn, args, entry => {
       if (entry === undefined) {
         cache.delete(key)
       } else {

@@ -61,6 +61,14 @@ Consider a lazy view when:
 
 Do not add lazy views to every function. Small views and inputs that change on every render receive no useful cache hits. Confirm the repeated work with the [slow warnings](/core/slow-warnings) and a profiler first.
 
+## Testing Cache Reuse {#test-cache-reuse}
+
+A lazy view that misses its cache still renders correctly, so a broken memo goes unnoticed until the page is slow. `Lazy.expectAllReused` from `foldkit/test` renders a view twice with the same Model and fails if any `createLazy` or `createKeyedLazy` slot rebuilt on the second render.
+
+::Snippet{name="lazyExpectAllReused" label="Asserting that lazy views reuse their cache"}
+
+Each miss names its slot, its key for keyed slots, and a reason. `NoCachedEntry` means the slot was created during the view or the key changed. `FunctionChanged` means the view function is a new closure. `ArgumentsChanged` lists the argument indices that were new references for the same Model.
+
 :::Info{label="How it works under the hood"}
 Foldkit's differ compares the old and new VNode by reference before diffing. When they are the same object, it skips attribute comparison, child reconciliation, and DOM updates.
 
