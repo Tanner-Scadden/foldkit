@@ -1,3 +1,4 @@
+import { Context, Schema } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -5,22 +6,30 @@ import {
   type HtmlBuilder,
   createKeyedLazy,
   createLazy,
+  defineView,
   inertHtml as ih,
 } from '../html/index.js'
 import { observeLazyResolutions } from '../html/lazy.js'
+import {
+  clearRuntime,
+  requireDispatch,
+  setRuntime,
+} from '../html/runtimeSingleton.js'
 import * as Lazy from './lazy.js'
 
-type Row = Readonly<{ id: string; label: string }>
-type Model = Readonly<{ title: string; rows: ReadonlyArray<Row> }>
+const Row = Schema.Struct({ id: Schema.String, label: Schema.String })
+type Row = typeof Row.Type
+const Model = Schema.Struct({ title: Schema.String, rows: Schema.Array(Row) })
+type Model = typeof Model.Type
 type View = (model: Model, h: HtmlBuilder<never>) => Html
 
-const model: Model = {
+const model = Model.make({
   title: 'Rows',
   rows: [
     { id: 'row-1', label: 'One' },
     { id: 'row-2', label: 'Two' },
   ],
-}
+})
 
 const EMPTY_SELECTION: ReadonlyArray<string> = []
 
@@ -37,11 +46,11 @@ const failureMessage = (view: View): string => {
       return error.message
     }
   }
-  throw new Error('expected Lazy.expectAllReused to throw')
+  throw new Error('Lazy.expectAllReused did not throw')
 }
 
 describe('Lazy.expectAllReused', () => {
-  test('passes when every slot reuses its cached view', () => {
+  test('passes when the view functions and arguments are unchanged', () => {
     const lazyTitle = createLazy()
     const lazyRows = createKeyedLazy()
     const view: View = (model, h) =>
@@ -67,11 +76,11 @@ describe('Lazy.expectAllReused', () => {
 
     expect(failureMessage(view)).toBe(
       [
-        'Expected every lazy slot to reuse its cached view when the same Model renders twice, but 1 lazy slot rebuilt:',
+        '1 lazy cache miss on the second render with the same Model:',
         '',
         '  slot 1: NoCachedEntry',
         '',
-        '  NoCachedEntry: Create the slot at module scope and key keyed slots by a stable Model id.',
+        '  NoCachedEntry: Create the slot at module scope. Use a stable key for each rendered item or position.',
       ].join('\n'),
     )
   })
@@ -87,7 +96,7 @@ describe('Lazy.expectAllReused', () => {
     expect(failureMessage(view)).toContain('  slot 1: FunctionChanged')
   })
 
-  test('numbers slots in render order and reports each keyed miss', () => {
+  test('numbers slots by their first call and reports misses for each key', () => {
     const lazyTitle = createLazy()
     const lazyRows = createKeyedLazy()
     const view: View = (model, h) =>
@@ -106,17 +115,17 @@ describe('Lazy.expectAllReused', () => {
 
     expect(failureMessage(view)).toContain(
       [
-        'but 2 lazy slots rebuilt:',
+        '2 lazy cache misses on the second render with the same Model:',
         '',
-        '  slot 2, key "row-1": ArgumentsChanged at index 0, 1',
-        '  slot 2, key "row-2": ArgumentsChanged at index 0, 1',
+        '  slot 2, key "row-1": ArgumentsChanged at indices 0, 1',
+        '  slot 2, key "row-2": ArgumentsChanged at indices 0, 1',
         '',
-        '  ArgumentsChanged: Pass Model values, not objects, arrays, or closures created during the view.',
+        '  ArgumentsChanged: Reuse the same objects, arrays, and functions when their values have not changed.',
       ].join('\n'),
     )
   })
 
-  test('reports only the arguments that changed', () => {
+  test('reports the index of each changed argument', () => {
     const lazyRows = createKeyedLazy()
     const view: View = (model, h) =>
       h.ul(
@@ -150,13 +159,12 @@ describe('Lazy.expectAllReused', () => {
     expect(message.match(/ {2}FunctionChanged:/g)).toHaveLength(1)
   })
 
-  test('throws when the view renders no lazy slots', () => {
+  test('throws when the second render makes no lazy calls', () => {
     const view: View = (model, h) => h.h1([], [model.title])
 
     expect(failureMessage(view)).toBe(
-      'Expected the view to render at least one lazy slot, but it rendered ' +
-        'none. Check that this Model reaches the createLazy or ' +
-        'createKeyedLazy calls under test.',
+      'The second render made no lazy calls. Choose a Model that renders ' +
+        'the memoized content you want to test.',
     )
   })
 
@@ -174,5 +182,99 @@ describe('Lazy.expectAllReused', () => {
     )
 
     expect(outerResolutions).toHaveLength(1)
+  })
+
+  test('reuses lazy views inside Submodel boundaries across assertions', () => {
+    const lazyTitle = createLazy()
+    const childView = defineView<Model>((model, h) =>
+      h.div([], [lazyTitle(titleView, [model.title])]),
+    )
+    const view: View = (model, h) =>
+      h.submodel({
+        slotId: 'child',
+        model,
+        view: childView,
+        toParentMessage: message => message,
+      })
+
+    expect(() => Lazy.expectAllReused({ view, model })).not.toThrow()
+    expect(() => Lazy.expectAllReused({ view, model })).not.toThrow()
+  })
+
+  test('reports FrameChanged when a slot is shared across Submodel boundaries', () => {
+    const lazyTitle = createLazy()
+    const childView = defineView<Model>((model, h) =>
+      h.div([], [lazyTitle(titleView, [model.title])]),
+    )
+    const view: View = (model, h) =>
+      h.div(
+        [],
+        [
+          h.submodel({
+            slotId: 'first',
+            model,
+            view: childView,
+            toParentMessage: message => message,
+          }),
+          h.submodel({
+            slotId: 'second',
+            model,
+            view: childView,
+            toParentMessage: message => message,
+          }),
+        ],
+      )
+
+    expect(failureMessage(view)).toContain('slot 1: FrameChanged')
+  })
+
+  test('checks nested lazy calls when the child view is tested directly', () => {
+    const lazyOuter = createLazy()
+    const lazyInner = createLazy()
+    const childView: View = (model, h) =>
+      h.div([], [lazyInner((title: string) => titleView(title), [model.title])])
+    const view: View = (model, h) => lazyOuter(childView, [model, h])
+
+    expect(() => Lazy.expectAllReused({ view, model })).not.toThrow()
+    expect(() => Lazy.expectAllReused({ view: childView, model })).toThrow(
+      'FunctionChanged',
+    )
+  })
+
+  test('restores the runtime and observer when the second render throws', () => {
+    const lazyTitle = createLazy()
+    let renderCount = 0
+    const view: View = (model, h) => {
+      renderCount++
+      const body = h.div([], [lazyTitle(titleView, [model.title])])
+
+      if (renderCount === 2) {
+        throw new Error('View failed')
+      }
+
+      return body
+    }
+    const outerDispatch = () => {}
+    const resolutions: Array<unknown> = []
+    setRuntime(outerDispatch, Context.empty())
+
+    try {
+      observeLazyResolutions(
+        resolution => {
+          resolutions.push(resolution)
+        },
+        () => {
+          expect(() => Lazy.expectAllReused({ view, model })).toThrow(
+            'View failed',
+          )
+          expect(requireDispatch()).toBe(outerDispatch)
+          createLazy()(titleView, [model.title])
+        },
+      )
+
+      expect(resolutions).toHaveLength(2)
+    } finally {
+      clearRuntime()
+    }
   })
 })

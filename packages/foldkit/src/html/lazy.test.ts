@@ -510,7 +510,7 @@ describe('observeLazyResolutions', () => {
     return resolutions
   }
 
-  it('reports a reuse without a miss reason', () => {
+  it('reports cache hits without a miss reason', () => {
     const viewFn = (label: string) => h('div', {}, [label])
     const lazy = createLazy()
     lazy(viewFn, ['hello'])
@@ -522,7 +522,7 @@ describe('observeLazyResolutions', () => {
     expect(resolution).toEqual({ slot: expect.any(Object) })
   })
 
-  it('reports a different dispatch frame as FrameChanged', () => {
+  it('reports a changed dispatcher as FrameChanged', () => {
     const viewFn = (label: string) => h('div', {}, [label])
     const lazy = createLazy()
     lazy(viewFn, ['hello'])
@@ -541,7 +541,7 @@ describe('observeLazyResolutions', () => {
     ])
   })
 
-  it('reports a changed args length as ArgumentCountChanged', () => {
+  it('reports a different number of arguments as ArgumentCountChanged', () => {
     const viewFn = (...labels: ReadonlyArray<string>) =>
       h('div', {}, [labels.join(' ')])
     const lazy = createLazy()
@@ -556,7 +556,7 @@ describe('observeLazyResolutions', () => {
     ])
   })
 
-  it('reports the key and one slot identity for a keyed slot', () => {
+  it('reports each key with the same factory instance identity', () => {
     const viewFn = (label: string) => h('div', {}, [label])
     const lazyRows = createKeyedLazy()
     lazyRows('a', viewFn, ['a'])
@@ -574,7 +574,7 @@ describe('observeLazyResolutions', () => {
     })
   })
 
-  it('reports nothing once the observed run returns', () => {
+  it('stops reporting when the observed function returns', () => {
     const viewFn = (label: string) => h('div', {}, [label])
     const lazy = createLazy()
     const resolutions = observe(() => {})

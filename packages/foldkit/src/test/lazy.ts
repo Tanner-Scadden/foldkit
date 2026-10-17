@@ -1,4 +1,4 @@
-import { Array, Context, Effect, Match, Predicate, pipe } from 'effect'
+import { Array, Context, Effect, Predicate, pipe } from 'effect'
 
 import {
   __beginRender as beginHtmlRender,
@@ -9,7 +9,7 @@ import {
 } from '../html/index.js'
 import type { Document, Html, HtmlBuilder } from '../html/index.js'
 import {
-  type LazyMissReason,
+  LazyMissReason,
   type LazyResolution,
   observeLazyResolutions,
 } from '../html/lazy.js'
@@ -36,30 +36,28 @@ const lazyContext = Context.make(Dispatch, noOpDispatch).pipe(
 
 const REASON_HINTS: Record<LazyMissReason['_tag'], string> = {
   NoCachedEntry:
-    'Create the slot at module scope and key keyed slots by a stable Model id.',
+    'Create the slot at module scope. Use a stable key for each rendered item or position.',
   FunctionChanged:
-    'Pass a module-level view function, not one created during the view.',
-  FrameChanged: 'Give each Submodel boundary its own slot or key.',
-  ArgumentCountChanged: 'Pass the same number of arguments on every render.',
+    'Pass the same view function for each slot or key. Define it outside view.',
+  FrameChanged: 'Use separate slots or keys for different Submodel boundaries.',
+  ArgumentCountChanged:
+    'Pass the same number of arguments to each slot or key.',
   ArgumentsChanged:
-    'Pass Model values, not objects, arrays, or closures created during the view.',
+    'Reuse the same objects, arrays, and functions when their values have not changed.',
 }
 
 const formatKey = (key: PropertyKey): string =>
   Predicate.isString(key) ? JSON.stringify(key) : String(key)
 
-const formatReason = (reason: LazyMissReason): string =>
-  Match.value(reason).pipe(
-    Match.tagsExhaustive({
-      NoCachedEntry: () => 'NoCachedEntry',
-      FunctionChanged: () => 'FunctionChanged',
-      FrameChanged: () => 'FrameChanged',
-      ArgumentCountChanged: ({ previousCount, currentCount }) =>
-        `ArgumentCountChanged from ${previousCount} to ${currentCount}`,
-      ArgumentsChanged: ({ indices }) =>
-        `ArgumentsChanged at index ${indices.join(', ')}`,
-    }),
-  )
+const formatReason = LazyMissReason.$match({
+  NoCachedEntry: () => 'NoCachedEntry',
+  FunctionChanged: () => 'FunctionChanged',
+  FrameChanged: () => 'FrameChanged',
+  ArgumentCountChanged: ({ previousCount, currentCount }) =>
+    `ArgumentCountChanged from ${previousCount} to ${currentCount}`,
+  ArgumentsChanged: ({ indices }) =>
+    `ArgumentsChanged at ${indices.length === 1 ? 'index' : 'indices'} ${indices.join(', ')}`,
+})
 
 const formatMiss = ({ slotId, key, reason }: LazyMiss): string =>
   key === undefined
@@ -67,8 +65,10 @@ const formatMiss = ({ slotId, key, reason }: LazyMiss): string =>
     : `  slot ${slotId}, key ${formatKey(key)}: ${formatReason(reason)}`
 
 const formatFailure = (misses: ReadonlyArray<LazyMiss>): string => {
-  const slotCount =
-    misses.length === 1 ? '1 lazy slot' : `${misses.length} lazy slots`
+  const missCount =
+    misses.length === 1
+      ? '1 lazy cache miss'
+      : `${misses.length} lazy cache misses`
   const hints = pipe(
     misses,
     Array.map(({ reason }) => reason._tag),
@@ -77,8 +77,7 @@ const formatFailure = (misses: ReadonlyArray<LazyMiss>): string => {
   )
 
   return [
-    'Expected every lazy slot to reuse its cached view when the same Model ' +
-      `renders twice, but ${slotCount} rebuilt:`,
+    `${missCount} on the second render with the same Model:`,
     '',
     ...Array.map(misses, formatMiss),
     '',
@@ -104,11 +103,17 @@ const toMisses = (
   return misses
 }
 
-/** Renders `view` twice with the same `model` and throws if any `createLazy`
- *  or `createKeyedLazy` slot rebuilds its view on the second render. The
- *  error lists each slot that rebuilt, its key, and why it missed its cache.
- *  Also throws when the view renders no lazy slots, so a Model that never
- *  reaches the memoized views cannot pass.
+/** Checks lazy cache reuse by rendering `view` twice with the same `model`.
+ *  Throws if a lazy call misses its cache on the second render. The error
+ *  identifies each slot, includes the key for keyed calls, and explains the
+ *  miss. `ArgumentsChanged` also lists the changed argument indices. Slot
+ *  numbers identify lazy instances in the order they are first called on
+ *  the second render.
+ *
+ *  Throws when the second render makes no lazy calls. Supply a Model that
+ *  renders the memoized content to test. Check states that render different
+ *  content separately. When an outer lazy cache hit skips a child view,
+ *  test the child view directly to check its lazy calls.
  *
  *  ```ts
  *  import { Lazy } from 'foldkit/test'
@@ -146,9 +151,8 @@ export const expectAllReused = <Model, Message>(
 
   if (Array.isArrayEmpty(resolutions)) {
     throw new Error(
-      'Expected the view to render at least one lazy slot, but it rendered ' +
-        'none. Check that this Model reaches the createLazy or ' +
-        'createKeyedLazy calls under test.',
+      'The second render made no lazy calls. Choose a Model that renders ' +
+        'the memoized content you want to test.',
     )
   }
 
