@@ -775,6 +775,7 @@ export interface OwnedSubscriptionEntryBuilder<
       keepAliveEquivalence: Equivalence.Equivalence<
         Schema.Struct.Type<NoInfer<Fields>>
       >
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler: (() => Generator<
         Yielded,
@@ -823,6 +824,7 @@ export interface OwnedSubscriptionEntryBuilder<
       messages: Messages & ValidateOwnedMessages<NoInfer<Messages>, Message>
       modelToDependencies: (model: Model) => Schema.Struct.Type<NoInfer<Fields>>
       keepAliveEquivalence?: never
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler: (() => Generator<
         Yielded,
@@ -866,6 +868,7 @@ export interface OwnedSubscriptionEntryBuilder<
       : Name,
     config: Readonly<{
       messages: Messages & ValidateOwnedMessages<NoInfer<Messages>, Message>
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler: (() => Generator<
         Yielded,
@@ -900,6 +903,7 @@ export interface OwnedSubscriptionEntryBuilder<
       : Name,
     config: Readonly<{
       messages: Messages & ValidateOwnedMessages<NoInfer<Messages>, Message>
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler?: never
     }>,
@@ -925,6 +929,7 @@ export interface OwnedSubscriptionEntryBuilder<
       keepAliveEquivalence: Equivalence.Equivalence<
         Schema.Struct.Type<NoInfer<Fields>>
       >
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler?: never
     }>,
@@ -948,6 +953,7 @@ export interface OwnedSubscriptionEntryBuilder<
       messages: Messages & ValidateOwnedMessages<NoInfer<Messages>, Message>
       modelToDependencies: (model: Model) => Schema.Struct.Type<NoInfer<Fields>>
       keepAliveEquivalence?: never
+      when?: (model: Model) => boolean
       dependenciesToStream?: never
       handler?: never
     }>,

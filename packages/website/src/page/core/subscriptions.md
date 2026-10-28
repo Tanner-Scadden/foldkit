@@ -85,6 +85,16 @@ If an adapter already exposes a dependency Struct, pass its `.fields` as the sec
 
 When `isAutoCounting` changes to `true`, the new Stream starts ticking. When it changes back to `false`, the active scope closes and the timer stops.
 
+### Gating an Entry on the Model
+
+The optional `when` predicate decides whether the entry runs at all. While `when` returns `false`, Foldkit runs no Stream for the entry and does not call `modelToDependencies`. When it returns `true`, the entry behaves like any other: dependencies are compared after each update, and a change restarts the Stream.
+
+::Snippet{name="subscriptionWhenGate" label="Escape listener gated with when"}
+
+The escape listener exists only while a name card is open. Closing the card closes the gate, which closes the Stream's scope and removes the `keydown` listener.
+
+The counter above gates its tick Stream inside the handler with `Stream.when` instead. Both stop the ticks at runtime, but only a `when` gate is visible to [`Subscription.expectActive`](/testing/scene#subscription-activity).
+
 ### Completing the Block
 
 Include the record when completing its owning Block. The completed value carries the Subscription registrations and their handler recipes through parent Bindings to the root. Assemble `ApplicationBlock` with the same Block API; the entry supplies it and the container to `Program.make`, calls `program.provide(layer)` when shared Services remain, and then starts the Program:
@@ -155,7 +165,7 @@ Use `Stream.tick` for discrete wall-clock steps that should occur every N millis
 
 ## Streams Without Local Model Dependencies
 
-For a Layer-backed Subscription with no local Model dependencies, pass its stable handler name and declared Messages to `entry`. Local Model changes leave the Stream running. A parent can still gate the entry when lifting it.
+For a Layer-backed Subscription with no local Model dependencies, pass its stable handler name and declared Messages to `entry`. Local Model changes leave the Stream running. A `when` predicate in the same config, or a parent lifting the entry, can still gate it.
 
 ::Snippet{name="subscriptionPersistent" label="Heartbeat without Model dependencies"}
 
@@ -191,7 +201,7 @@ When a parent embeds a Block with Subscriptions, its Binding lifts the child's M
 
 ### Gating Child Subscriptions
 
-The optional `when` field lets the parent add a Stream condition the child cannot see. One predicate can gate the whole record, or a map can gate selected entries. Put the policy under `subscriptions.when` in the Binding. This gate controls Stream lifetime only: it does not make the child absent, stop ManagedResources or Mounts, or prevent `binding.fold` from running.
+The optional `when` field lets the parent add a Stream condition the child cannot see. One predicate can gate the whole record, or a map can gate selected entries. A child entry's own `when` gate applies too, so the lifted entry runs only while both gates are open. Put the policy under `subscriptions.when` in the Binding. This gate controls Stream lifetime only: it does not make the child absent, stop ManagedResources or Mounts, or prevent `binding.fold` from running.
 
 Use direct-field `presentWhen` when the condition governs the whole child rather than its Streams. That predicate makes the Binding absent for updates and every lifecycle channel. A custom accessor expresses the same policy by returning `None` from `read`.
 

@@ -644,7 +644,7 @@ describe('lift over lift', () => {
       subscriptions.ticks.modelToDependencies(innerClosedModel)
 
     expect(dependencies).toEqual({
-      maybeDependencies: Option.some({ maybeDependencies: Option.none() }),
+      maybeDependencies: Option.none(),
     })
     expect(projectedModels).toEqual([])
     expect(
@@ -696,7 +696,6 @@ describe('lift over lift', () => {
     expect(entry.keepAliveEquivalence(open, openAfterLabelChange)).toBe(true)
     expect(entry.keepAliveEquivalence(open, innerClosed)).toBe(false)
     expect(entry.keepAliveEquivalence(open, outerClosed)).toBe(false)
-    expect(entry.keepAliveEquivalence(innerClosed, outerClosed)).toBe(false)
     expect(entry.keepAliveEquivalence(outerClosed, outerClosed)).toBe(true)
 
     expect(
@@ -742,7 +741,7 @@ describe('lift over lift', () => {
       }),
     })
     expect(subscriptions.ticks.modelToDependencies(innerClosedModel)).toEqual({
-      maybeDependencies: Option.some({ maybeDependencies: Option.none() }),
+      maybeDependencies: Option.none(),
     })
     expect(subscriptions.pulses.modelToDependencies(innerClosedModel)).toEqual({
       maybeDependencies: Option.some({

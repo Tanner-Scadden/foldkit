@@ -265,9 +265,19 @@ Each Subscription entry's `messages` collection is its emission contract. `emit(
 
 For a lifted Subscription, pass the child Message. Scene replays the entry's generated delivery through every child boundary before calling the update under test. The entry argument always makes the event source explicit, including when several Subscriptions declare the same Message.
 
-`emit` supplies an output from the registered Subscription graph; it does not evaluate `modelToDependencies` against the current Model. This allows a test to represent an event that was already queued when its Subscription became inactive.
+`emit` supplies an output from the registered Subscription graph; it does not check whether the current Model activates the entry. This allows a test to represent an event that was already queued when its Subscription became inactive. To check that the Runtime would be listening, assert activity before emitting.
 
 Use `emit` for a Subscription-origin fact. If the same Message can come from a button or another DOM interaction, use that interaction when testing the DOM-origin path. The interaction verifies the handler wiring that `emit` would skip. `emit` throws while Commands, Mounts, or unacknowledged unmounts are pending.
+
+### Subscription Activity
+
+`Subscription.expectActive(entry)` and `Subscription.expectInactive(entry)` check whether the Runtime would run the entry's Stream for the current Model. An entry is inactive while its own [`when` gate](/core/subscriptions#gating-an-entry-on-the-model) is closed, while a parent's lift gate is closed, or while a lifted child is absent. Pass the registered entry or the child entry it was lifted from.
+
+This Scene tests the name card's `escapePresses` entry from [Gating an Entry on the Model](/core/subscriptions#gating-an-entry-on-the-model):
+
+::Snippet{name="testingSubscriptionActivity" label="Subscription activity assertions"}
+
+A condition inside the handler's Stream, such as `Stream.when` or a branch that returns `Stream.empty`, is not visible to these steps. An entry gated that way reports active even when its Stream emits nothing. Move the condition into `when` to make it testable.
 
 ## Managed Resources
 

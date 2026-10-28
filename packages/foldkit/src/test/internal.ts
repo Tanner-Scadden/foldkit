@@ -944,14 +944,10 @@ const applySubscriptionMappers = (
     (current, toParentMessage) => toParentMessage(current),
   )
 
-/** Validates a Message emitted for a registered Subscription entry and
- *  applies that entry's generated delivery. */
-export const resolveSubscriptionMessage = (
-  stepName: string,
+const sourceDeclarationsOf = (
   declarations: ReadonlyArray<SubscriptionMessageDeclaration>,
   entry: unknown,
-  message: unknown,
-): unknown => {
+): ReadonlyArray<SubscriptionMessageDeclaration> => {
   const exactDeclarations = Array.filter(
     declarations,
     declaration => declaration.entry === entry,
@@ -991,6 +987,36 @@ export const resolveSubscriptionMessage = (
             String.endsWith(`/${name}`)(declarationName))
         )
       })
+
+  return sourceDeclarations
+}
+
+const throwAmbiguousSubscription = (
+  stepName: string,
+  declarations: ReadonlyArray<SubscriptionMessageDeclaration>,
+): never => {
+  const entryKeys = pipe(
+    declarations,
+    Array.map(({ entryKey }) => entryKey),
+    Array.join(', '),
+  )
+
+  throw new Error(
+    `${stepName} selected a Subscription entry ` +
+      `registered under multiple keys: ${entryKeys}.\n\n` +
+      'Select the bound Subscription entry for the intended child placement.',
+  )
+}
+
+/** Validates a Message emitted for a registered Subscription entry and
+ *  applies that entry's generated delivery. */
+export const resolveSubscriptionMessage = (
+  stepName: string,
+  declarations: ReadonlyArray<SubscriptionMessageDeclaration>,
+  entry: unknown,
+  message: unknown,
+): unknown => {
+  const sourceDeclarations = sourceDeclarationsOf(declarations, entry)
   const matchingDeclarations = Array.filter(sourceDeclarations, declaration =>
     Array.some(declaration.schemas, schema => Schema.is(schema)(message)),
   )
@@ -1004,20 +1030,35 @@ export const resolveSubscriptionMessage = (
     },
     onNonEmpty: (declaration, remainingDeclarations) => {
       if (Array.isArrayNonEmpty(remainingDeclarations)) {
-        const entryKeys = pipe(
-          matchingDeclarations,
-          Array.map(({ entryKey }) => entryKey),
-          Array.join(', '),
-        )
-
-        throw new Error(
-          `${stepName} selected a Subscription entry ` +
-            `registered under multiple keys: ${entryKeys}.\n\n` +
-            'Select the bound Subscription entry for the intended child placement.',
-        )
+        return throwAmbiguousSubscription(stepName, matchingDeclarations)
       }
 
       return applySubscriptionMappers(declaration, message)
     },
   })
 }
+
+/** Finds the one registration of a Subscription entry, accepting the
+ *  registered entry itself or the child entry it was lifted from. */
+export const resolveSubscriptionDeclaration = (
+  stepName: string,
+  declarations: ReadonlyArray<SubscriptionMessageDeclaration>,
+  entry: unknown,
+): SubscriptionMessageDeclaration =>
+  Array.matchLeft(sourceDeclarationsOf(declarations, entry), {
+    onEmpty: () => {
+      throw new Error(
+        `${stepName} received a Subscription entry that is not registered in the Scene's subscriptions.`,
+      )
+    },
+    onNonEmpty: (declaration, remainingDeclarations) => {
+      if (Array.isArrayNonEmpty(remainingDeclarations)) {
+        return throwAmbiguousSubscription(stepName, [
+          declaration,
+          ...remainingDeclarations,
+        ])
+      }
+
+      return declaration
+    },
+  })

@@ -4007,6 +4007,191 @@ describe('Scene.Subscription.emit', () => {
   })
 })
 
+const MAX_GATED_TICKS = 2
+
+const gatedCounterSubscriptions = SubscriptionDefinition.make<
+  CounterModel,
+  CounterMessage
+>()(entry => ({
+  clock: entry('SceneGatedCounterClock', {
+    messages: [CounterMessage.Ticked],
+    when: model => model.count < MAX_GATED_TICKS,
+  }),
+}))
+
+const PARENT_CLOSED_COUNT = 1
+
+const parentGatedCounterSubscriptions = SubscriptionDefinition.lift(
+  gatedCounterSubscriptions,
+)<SubscriptionParentModel, SubscriptionParentMessage>({
+  read: model => Option.some(model.counter),
+  toParentMessage: message =>
+    SubscriptionParentMessage.GotLeftCounterMessage({ message }),
+  when: model => model.counter.count !== PARENT_CLOSED_COUNT,
+})
+
+describe('Scene.Subscription activity', () => {
+  test('follows the entry when gate across Model changes', () => {
+    Scene.scene(
+      {
+        update: counterUpdate,
+        view: counterView,
+        subscriptions: gatedCounterSubscriptions,
+      },
+      Scene.given(counterInitialModel),
+      Scene.Subscription.expectActive(gatedCounterSubscriptions.clock),
+      Scene.Subscription.emit(
+        gatedCounterSubscriptions.clock,
+        CounterMessage.Ticked(),
+      ),
+      Scene.Subscription.expectActive(gatedCounterSubscriptions.clock),
+      Scene.Subscription.emit(
+        gatedCounterSubscriptions.clock,
+        CounterMessage.Ticked(),
+      ),
+      Scene.Subscription.expectInactive(gatedCounterSubscriptions.clock),
+    )
+  })
+
+  test('reports an expectation the current Model contradicts', () => {
+    expect(() =>
+      Scene.scene(
+        {
+          update: counterUpdate,
+          view: counterView,
+          subscriptions: gatedCounterSubscriptions,
+        },
+        Scene.given(
+          modifyFields(counterInitialModel, { count: () => MAX_GATED_TICKS }),
+        ),
+        Scene.Subscription.expectActive(gatedCounterSubscriptions.clock),
+      ),
+    ).toThrow(
+      'Scene.Subscription.expectActive expected the Subscription "clock" to be active, but the current Model leaves it inactive.',
+    )
+
+    expect(() =>
+      Scene.scene(
+        {
+          update: counterUpdate,
+          view: counterView,
+          subscriptions: gatedCounterSubscriptions,
+        },
+        Scene.given(counterInitialModel),
+        Scene.Subscription.expectInactive(gatedCounterSubscriptions.clock),
+      ),
+    ).toThrow(
+      'Scene.Subscription.expectInactive expected the Subscription "clock" to be inactive, but the current Model activates it.',
+    )
+  })
+
+  test('treats an entry without a when gate as active', () => {
+    expect(() =>
+      Scene.scene(
+        {
+          update: counterUpdate,
+          view: counterView,
+          subscriptions: counterSubscriptions,
+        },
+        Scene.given(counterInitialModel),
+        Scene.Subscription.expectActive(counterSubscriptions.clock),
+        Scene.Subscription.expectInactive(counterSubscriptions.clock),
+      ),
+    ).toThrow('to be inactive, but the current Model activates it.')
+  })
+
+  test('requires both the parent lift gate and the child entry gate', () => {
+    Scene.scene(
+      {
+        update: subscriptionParentUpdate,
+        view: subscriptionParentView,
+        subscriptions: parentGatedCounterSubscriptions,
+      },
+      Scene.given({ counter: counterInitialModel }),
+      Scene.Subscription.expectActive(parentGatedCounterSubscriptions.clock),
+      Scene.Subscription.emit(
+        gatedCounterSubscriptions.clock,
+        CounterMessage.Ticked(),
+      ),
+      Scene.Subscription.expectInactive(parentGatedCounterSubscriptions.clock),
+      Scene.Subscription.emit(
+        gatedCounterSubscriptions.clock,
+        CounterMessage.Ticked(),
+      ),
+      Scene.Subscription.expectInactive(gatedCounterSubscriptions.clock),
+    )
+  })
+
+  test('reports an absent lifted child as inactive without projecting its dependencies', () => {
+    Scene.scene(
+      {
+        update: subscriptionParentUpdate,
+        view: subscriptionParentView,
+        subscriptions: inactiveLeftCounterSubscriptions,
+      },
+      Scene.given({ counter: counterInitialModel }),
+      Scene.Subscription.expectInactive(
+        inactiveLeftCounterSubscriptions.leftClock,
+      ),
+      Scene.Subscription.expectInactive(inactiveCounterSubscriptions.clock),
+    )
+  })
+
+  test('requires the bound entry for a child entry registered under several keys', () => {
+    expect(() =>
+      Scene.scene(
+        {
+          update: subscriptionParentUpdate,
+          view: subscriptionParentView,
+          subscriptions: parentCounterSubscriptions,
+        },
+        Scene.given({ counter: counterInitialModel }),
+        Scene.Subscription.expectActive(counterSubscriptions.clock),
+      ),
+    ).toThrow(
+      'Scene.Subscription.expectActive selected a Subscription entry registered under multiple keys: leftClock, rightClock.',
+    )
+
+    Scene.scene(
+      {
+        update: subscriptionParentUpdate,
+        view: subscriptionParentView,
+        subscriptions: parentCounterSubscriptions,
+      },
+      Scene.given({ counter: counterInitialModel }),
+      Scene.Subscription.expectActive(parentCounterSubscriptions.leftClock),
+    )
+  })
+
+  test('rejects an entry missing from the registered Subscriptions', () => {
+    expect(() =>
+      Scene.scene(
+        {
+          update: counterUpdate,
+          view: counterView,
+          subscriptions: counterSubscriptions,
+        },
+        Scene.given(counterInitialModel),
+        // @ts-expect-error The gated clock is not registered in this Scene.
+        Scene.Subscription.expectActive(gatedCounterSubscriptions.clock),
+      ),
+    ).toThrow(
+      "Scene.Subscription.expectActive received a Subscription entry that is not registered in the Scene's subscriptions.",
+    )
+  })
+
+  test('requires a registered Subscriptions record', () => {
+    expectTypeOf(() =>
+      Scene.scene(
+        { update: counterUpdate, view: counterView },
+        Scene.given(counterInitialModel),
+        // @ts-expect-error A Scene without subscriptions has no Subscription to inspect.
+        Scene.Subscription.expectActive(counterSubscriptions.clock),
+      ),
+    ).toBeFunction()
+  })
+})
+
 describe('Scene.ManagedResource', () => {
   test('acquire and release drive the declared lifecycle Messages through update', () => {
     Scene.scene(

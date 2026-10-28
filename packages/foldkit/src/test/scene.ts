@@ -52,6 +52,7 @@ import {
   type Subscription as RuntimeSubscription,
   type MessageDeclaration as SubscriptionMessageDeclaration,
   aggregate as aggregateSubscriptions,
+  __maybeActiveDependencies as maybeActiveSubscriptionDependencies,
   __messageDeclarations as subscriptionMessageDeclarations,
 } from '../subscription/subscription.js'
 import { tagNameFromSelector } from '../tagName.js'
@@ -97,6 +98,7 @@ import {
   resolveAllInternal,
   resolveByMatcher,
   resolveMountByMatcher,
+  resolveSubscriptionDeclaration,
   resolveSubscriptionMessage,
 } from './internal.js'
 import type { Locator, LocatorAll } from './query.js'
@@ -211,6 +213,13 @@ export type SubscriptionMessageStep<Message, Entry = undefined> = Readonly<{
   _tag: 'SubscriptionMessageStep'
   entry: Entry
   message: Message
+}>
+
+/** A typed Subscription activity assertion step. */
+export type SubscriptionActivityStep<Entry = undefined> = Readonly<{
+  _tag: 'SubscriptionActivityStep'
+  entry: Entry
+  isExpectedActive: boolean
 }>
 
 /** A group of Scene steps whose Locators resolve within one parent element. */
@@ -331,22 +340,30 @@ export type SceneStep<Model, Message, OutMessage, Subscriptions = undefined> =
   | (RuntimeRegistryEntries<NoInfer<Subscriptions>> extends Readonly<
       Record<string, RuntimeSubscription<any, any, any, any>>
     >
-      ? {
-          readonly [
-            Key in keyof RuntimeRegistryEntries<NoInfer<Subscriptions>>
-          ]: RuntimeRegistryEntries<
-            NoInfer<Subscriptions>
-          >[Key] extends Readonly<{
-            messages: infer Messages extends ReadonlyArray<Schema.Top>
-          }>
-            ? SubscriptionMessageStep<
-                Schema.Schema.Type<Messages[number]>,
-                SubscriptionEmissionSource<
-                  RuntimeRegistryEntries<NoInfer<Subscriptions>>[Key]
-                >
+      ?
+          | {
+              readonly [
+                Key in keyof RuntimeRegistryEntries<NoInfer<Subscriptions>>
+              ]: RuntimeRegistryEntries<
+                NoInfer<Subscriptions>
+              >[Key] extends Readonly<{
+                messages: infer Messages extends ReadonlyArray<Schema.Top>
+              }>
+                ? SubscriptionMessageStep<
+                    Schema.Schema.Type<Messages[number]>,
+                    SubscriptionEmissionSource<
+                      RuntimeRegistryEntries<NoInfer<Subscriptions>>[Key]
+                    >
+                  >
+                : never
+            }[keyof RuntimeRegistryEntries<NoInfer<Subscriptions>>]
+          | SubscriptionActivityStep<
+              SubscriptionEmissionSource<
+                RuntimeRegistryEntries<
+                  NoInfer<Subscriptions>
+                >[keyof RuntimeRegistryEntries<NoInfer<Subscriptions>>]
               >
-            : never
-        }[keyof RuntimeRegistryEntries<NoInfer<Subscriptions>>]
+            >
       : never)
   | InsideStep<
       ReadonlyArray<
@@ -864,6 +881,41 @@ const applySubscriptionMessage = <Model, Message, OutMessage>(
     commands: Array.appendAll(internal.commands, messageUpdate.commands ?? []),
     outMessage: messageUpdate.outMessage,
   } as SceneSimulation<Model, Message, OutMessage>
+}
+
+const applySubscriptionActivity = <Model, Message, OutMessage>(
+  simulation: SceneSimulation<Model, Message, OutMessage>,
+  step: SubscriptionActivityStep<unknown>,
+): SceneSimulation<Model, Message, OutMessage> => {
+  const internal = toInternal(simulation)
+  const stepName = step.isExpectedActive
+    ? 'Scene.Subscription.expectActive'
+    : 'Scene.Subscription.expectInactive'
+
+  const declaration = resolveSubscriptionDeclaration(
+    stepName,
+    internal.subscriptionDeclarations,
+    step.entry,
+  )
+  const isActive = Option.isSome(
+    maybeActiveSubscriptionDependencies(declaration.entry, internal.model),
+  )
+
+  if (isActive && !step.isExpectedActive) {
+    throw new Error(
+      `${stepName} expected the Subscription "${declaration.entryKey}" to be inactive, but the current Model activates it.\n\n` +
+        "The Runtime runs its Stream for this Model. Drive the Model out of that state through real steps first. A condition inside the handler's Stream is not visible to this step; declare it with the entry's `when` predicate.",
+    )
+  }
+
+  if (!isActive && step.isExpectedActive) {
+    throw new Error(
+      `${stepName} expected the Subscription "${declaration.entryKey}" to be active, but the current Model leaves it inactive.\n\n` +
+        'The Runtime runs no Stream for this entry while a `when` gate is closed or a lifted child is absent. Drive the Model into the active state through real steps first.',
+    )
+  }
+
+  return simulation
 }
 
 /** Clears the pending fall-through, marking it acknowledged. Paired with
@@ -1434,6 +1486,32 @@ const emitSubscriptionMessage = <
   message,
 })
 
+/**
+ * Asserts that the Runtime would run a registered Subscription's Stream for
+ *  the current Model. Accepts the registered entry or the child entry it was
+ *  lifted from.
+ */
+const expectSubscriptionActive = <Entry>(
+  entry: Entry,
+): SubscriptionActivityStep<Entry> => ({
+  _tag: 'SubscriptionActivityStep',
+  entry,
+  isExpectedActive: true,
+})
+
+/**
+ * Asserts that the Runtime would run no Stream for a registered
+ *  Subscription with the current Model. Accepts the registered entry or the
+ *  child entry it was lifted from.
+ */
+const expectSubscriptionInactive = <Entry>(
+  entry: Entry,
+): SubscriptionActivityStep<Entry> => ({
+  _tag: 'SubscriptionActivityStep',
+  entry,
+  isExpectedActive: false,
+})
+
 const MANAGED_RESOURCE_CONTEXT =
   'when a ManagedResource dispatched a new Message'
 
@@ -1742,8 +1820,10 @@ export const Mount = {
   expectEnded: expectEndedMountsStep,
 } as const
 
-/** Steps that model Messages arriving from a Subscription.
- *  Destructure as `const { Subscription } = Scene` for concise call sites. */
+/** Steps that model Messages arriving from a Subscription and assert
+ *  whether the Runtime would run a registered Subscription for the current
+ *  Model. Destructure as `const { Subscription } = Scene` for concise call
+ *  sites. */
 export const Subscription = {
   /**
    * Feeds a Message declared by the Scene's registered Subscriptions through
@@ -1756,6 +1836,20 @@ export const Subscription = {
    *  interact with the rendered DOM for DOM Messages.
    */
   emit: emitSubscriptionMessage,
+  /**
+   * Asserts that the current Model activates a registered Subscription: the
+   *  entry's `when` gates are open and every lifted child is present, so the
+   *  Runtime runs its Stream. A condition evaluated inside the Stream, such
+   *  as a handler returning `Stream.empty`, is not visible to this step.
+   *  Declare that condition with `when` to make it observable.
+   */
+  expectActive: expectSubscriptionActive,
+  /**
+   * Asserts that the current Model leaves a registered Subscription
+   *  inactive: a `when` gate is closed or a lifted child is absent, so the
+   *  Runtime runs no Stream for it.
+   */
+  expectInactive: expectSubscriptionInactive,
 } as const
 
 /** Steps that model the lifecycle Messages of a ManagedResource. The test
@@ -1979,6 +2073,10 @@ const applySceneStep = <Model, Message, OutMessage, Subscriptions>(
 
   if (Predicate.isTagged(step, 'SubscriptionMessageStep')) {
     return applySubscriptionMessage(simulation, step)
+  }
+
+  if (Predicate.isTagged(step, 'SubscriptionActivityStep')) {
+    return applySubscriptionActivity(simulation, step)
   }
 
   if (Predicate.isTagged(step, 'OutMessageStep')) {
