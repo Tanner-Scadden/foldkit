@@ -74,6 +74,17 @@ CounterComposition.makeUpdate({ ...validCases, Undeclared: quietStep })
 const extraCases = { ...validCases, Undeclared: quietStep }
 // @ts-expect-error Structural assignment cannot hide an extra handler.
 CounterComposition.makeUpdate(extraCases)
+// @ts-expect-error Every local Message needs a contextual handler.
+CounterComposition.makeUpdate.withContext((_amount: number) => ({
+  RequestedQuiet: quietStep,
+}))
+// @ts-expect-error Extra contextual handlers are rejected.
+CounterComposition.makeUpdate.withContext((_amount: number) => ({
+  ...validCases,
+  Undeclared: quietStep,
+}))
+// @ts-expect-error Structural assignment cannot hide an extra contextual handler.
+CounterComposition.makeUpdate.withContext((_amount: number) => extraCases)
 CounterComposition.makeUpdate({
   ...validCases,
   // @ts-expect-error The handler receives the owning Model.
@@ -248,6 +259,37 @@ ParentComposition.makeUpdate({
   // @ts-expect-error Extracting a combination through a Definition Step preserves the obligation.
   RequestedReport: model => emittedStep(model),
 })
+ParentDefinition.makeComposition().makeUpdate.withContext(
+  (_amount: number) => ({
+    ...parentCases,
+    // @ts-expect-error A contextual connected operation requires its registered child graph.
+    RequestedQuiet: model => ChildBinding.quiet()(model),
+  }),
+)
+// @ts-expect-error A contextual combination cannot discard the selected emitting operation's OutMessage.
+ParentComposition.makeUpdate.withContext((amount: number) => ({
+  ...parentCases,
+  RequestedReport: model =>
+    Update.combineSteps(model, [
+      ChildBinding.report({ amount }),
+      ParentDefinition.makeNoopStep(),
+    ]),
+  RequestedSave: ChildBinding.save(),
+}))
+// @ts-expect-error A contextual handler returning any cannot bypass validation beside a Binding operation.
+ParentComposition.makeUpdate.withContext((_amount: number) => ({
+  ...parentCases,
+  RequestedQuiet: () => erased,
+  RequestedSave: ChildBinding.save(),
+}))
+// @ts-expect-error A contextual never return does not prove a valid handler beside a Binding operation.
+ParentComposition.makeUpdate.withContext((_amount: number) => ({
+  ...parentCases,
+  RequestedQuiet: () => {
+    throw new Error('never')
+  },
+  RequestedSave: ChildBinding.save(),
+}))
 
 // @ts-expect-error Declared context is required during dispatch.
 contextualUpdate(Model.make({ count: 0 }), LocalMessage.RequestedQuiet())

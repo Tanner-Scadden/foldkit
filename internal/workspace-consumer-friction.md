@@ -149,21 +149,19 @@ Context-dependent records use one factory. Required, optional/defaulted, and res
 ```ts
 export const update = CounterComposition.makeUpdate.withContext(
   (multiplier: number) => ({
-    RequestedQuiet: model => CounterDefinition.makeNoopStep()(model),
-    RequestedReport: (model, { amount }) =>
-      CounterDefinition.makeOutMessageStep(
-        OutMessage.ReportedCount({
-          count: (model.count + amount) * multiplier,
-        }),
-      )(model),
-    RequestedSave: model =>
-      CounterDefinition.makeCommandsStep(() => [Save()])(model),
-    CompletedSave: model => CounterDefinition.makeNoopStep()(model),
+    RequestedQuiet: CounterDefinition.makeNoopStep(),
+    RequestedReport: CounterDefinition.makeOutMessageStep((model, message) =>
+      OutMessage.ReportedCount({
+        count: (model.count + message.amount) * multiplier,
+      }),
+    ),
+    RequestedSave: CounterDefinition.makeCommandsStep(() => [Save()]),
+    CompletedSave: CounterDefinition.makeNoopStep(),
   }),
 )
 ```
 
-The factory is passive until an authored local dispatch, then produces the handlers for that dispatch. It does not run for a routed child-only dispatch. Unlike the context-free record, directly assigning generic Steps to context-factory fields can lose contextual inference; the explicit `model => step(model)` wrapper is the passing form. This is an ergonomic cost, not a need for consumer Model annotations or generic output lists.
+The factory is passive until an authored local dispatch, then produces the handlers for that dispatch. It does not run for a routed child-only dispatch. As in the context-free record, a compatible Step can be a context-factory field value directly, with no consumer Model annotations or generic output lists.
 
 The existing callback form remains useful when one aggregate output contract is intentional. A callback mixing connected operations with local transitions must use canonical Definition-owned Step results for those local branches. A raw `{ model }` beside a connected recipe now receives the explicit repair diagnostic. Raw-only callbacks remain supported. The isolated Workspace repairs show the cost: meaningful named Steps are readable; one-off field/no-op wrapping adds ceremony. The real DatePicker, Dialog, and Toast record conversions supply a second consumer example rather than claiming the type fixtures alone establish ergonomics.
 

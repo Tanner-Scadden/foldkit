@@ -89,7 +89,7 @@ Return ordinary handler results directly. Use Step helpers for reusable transiti
 
 In a split feature, `definition.ts` exports the Step helpers used by its implementation, such as `export const { makeStep, makeFieldsStep, makeNoopStep } = FeatureDefinition`. Import those helpers by name in `update.ts`, policy modules, and other implementation files. A compact feature destructures them beside its Definition in the scope that uses them. Keep Definition-qualified calls when a module works with several Definitions and the qualifier identifies the owner. Keep authoring helpers out of the feature barrel; export the completed Block there.
 
-If one handler mixes connected Binding recipes with local results, author its local branches through Definition-owned Steps. A raw `{ model }` beside a connected recipe is rejected because it can erase channels. Generic Steps in a context factory may likewise need `model => step(model)` for inference. Ordinary raw-only handlers need no Step wrapper.
+If one handler mixes connected Binding recipes with local results, author its local branches through Definition-owned Steps. A raw `{ model }` beside a connected recipe is rejected because it can erase channels. Ordinary raw-only handlers need no Step wrapper.
 
 The update is dual: `update(model, message, ...context)` and `update(message)(model, ...context)`. The curried form is an internal Step. Record-authored updates retain each selected Message's Command and OutMessage contract; utilities inspecting the whole update retain their union. Extracted helpers must preserve those channels too. Avoid a fixed `Update.Return<Model, Message>` annotation on a Command-producing handler: its default requirement is `never`.
 

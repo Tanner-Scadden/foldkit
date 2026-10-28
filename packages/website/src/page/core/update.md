@@ -64,7 +64,7 @@ The retained precision depends on the visible handler and helper return types. A
 
 Use `FeatureComposition.makeUpdate.withContext(context => handlers)` when local handlers need additional dispatch arguments. The factory receives those arguments and returns the exhaustive local handler record. Its handlers receive the Model and exact Message payload as usual. Required, defaulted, optional, and rest context arguments retain their call shapes.
 
-Creating the update is passive. The factory runs for each local dispatch and does not run for a routed child-only delivery. Context-factory handlers that use a generic Step may need the explicit adapter `model => step(model)` for inference; they do not need a Model annotation.
+Creating the update is passive. The factory runs for each local dispatch and does not run for a routed child-only delivery. Context-factory handlers do not need a Model annotation, and a compatible Step can be a record value directly, as in the plain handler record.
 
 ::Snippet{name="updateCurriedContext" label="Authoring an update with dispatch context"}
 
