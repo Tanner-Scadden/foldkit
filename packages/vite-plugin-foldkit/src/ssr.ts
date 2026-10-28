@@ -7,6 +7,7 @@ import { Readable } from 'node:stream'
 import type {
   Connect,
   DevEnvironment,
+  EnvironmentModuleNode,
   Plugin,
   ProxyOptions,
   ViteDevServer,
@@ -72,6 +73,36 @@ export type FoldkitSsrOptions = Readonly<{
 // invoking it.
 const isRunnable = (environment: DevEnvironment): boolean =>
   'runner' in environment
+
+// NOTE: After an edit, Vite reruns the edited module and the modules that
+// import it, but not the modules it imports. A Block Definition created in an
+// imported module would still hold the names declared against it in the
+// previous run, so the rerun's declarations would be rejected as duplicates.
+// Soft invalidation reruns every server module on the next request and reuses
+// each module's transformed code, as Vite's module runner does on a full
+// reload.
+const reevaluateServerModules = (
+  environment: DevEnvironment,
+  editedFile: string,
+): void => {
+  const { moduleGraph } = environment
+
+  if (moduleGraph.getModulesByFile(editedFile) === undefined) {
+    return
+  }
+
+  const invalidatedModules = new Set<EnvironmentModuleNode>()
+
+  for (const module of moduleGraph.idToModuleMap.values()) {
+    moduleGraph.invalidateModule(
+      module,
+      invalidatedModules,
+      undefined,
+      false,
+      true,
+    )
+  }
+}
 
 const isEntryModule = (
   loadedModule: unknown,
@@ -810,6 +841,7 @@ const renderMiddleware =
  */
 export const foldkitSsr = (options: FoldkitSsrOptions): Plugin => {
   let isDevelopmentHost = false
+  let renderingServer: ViteDevServer | undefined
 
   return {
     name: 'foldkit-ssr',
@@ -871,6 +903,11 @@ export const foldkitSsr = (options: FoldkitSsrOptions): Plugin => {
             }),
       }
     },
+    watchChange: file => {
+      if (renderingServer !== undefined) {
+        reevaluateServerModules(renderingServer.environments.ssr, file)
+      }
+    },
     configureServer: server => {
       // Rendering here loads the server entry through the `ssr` environment's
       // module runner, which only a runnable environment has. A host plugin
@@ -891,6 +928,8 @@ export const foldkitSsr = (options: FoldkitSsrOptions): Plugin => {
         }
         return
       }
+
+      renderingServer = server
 
       const requestUrls = new WeakMap<Connect.IncomingMessage, string>()
       const stateByRequest = new WeakMap<
